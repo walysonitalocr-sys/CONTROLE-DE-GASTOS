@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Meu Controle de Gastos — Único arquivo</title>
+
+  <!-- Tailwind CDN (modo rápido) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // ativa dark mode via classe
+    tailwind.config = { darkMode: 'class' }
+  </script>
+
+  <!-- React + ReactDOM (dev builds ok para local) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel para poder usar JSX no browser (somente para protótipo) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Chart.js (para gráficos simples) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    /* Pequenos ajustes */
+    html,body,#root { height: 100%; }
+    body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+
+  <div id="root"></div>
+
+  <!-- APP: código em um único bloco (JSX via Babel) -->
+  <script type="text/babel">
+    // Usando React 18 UMD globals (React, ReactDOM)
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    /* ---------- util: id rápido ---------- */
+    function genId() {
+      return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9);
+    }
+
+    /* ---------- dados de categorias ---------- */
+    const CATEGORIES = [
+      { id: 'alimentacao', name: 'Alimentação' },
+      { id: 'transporte', name: 'Transporte' },
+      { id: 'lazer', name: 'Lazer' },
+      { id: 'moradia', name: 'Moradia' },
+      { id: 'saude', name: 'Saúde' },
+      { id: 'outros', name: 'Outros' },
+    ];
+
+    /* ---------- armazenamento ---------- */
+    const KEY = 'meu_controle_gastos_v1';
+    function loadTransactions() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) {
+          // dados de exemplo iniciais
+          return [
+            { id: genId(), type: 'income', category: 'outros', amount: 1200, date: '2025-10-01', description: 'Salário' },
+            { id: genId(), type: 'expense', category: 'alimentacao', amount: 45.5, date: '2025-10-25', description: 'Almoço' },
+            { id: genId(), type: 'expense', category: 'transporte', amount: 15.0, date: '2025-10-20', description: 'Uber' },
+          ];
+        }
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
+    }
+    function saveTransactions(tx) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(tx));
+      } catch (e) { console.error(e); }
+    }
+
+    /* ---------- Theme Toggle ---------- */
+    function ThemeToggle() {
+      const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
+
+      useEffect(() => {
+        const root = document.documentElement;
+        if (dark) root.classList.add('dark');
+        else root.classList.remove('dark');
+        localStorage.setItem('theme', dark ? 'dark' : 'light');
+      }, [dark]);
+
+      return (
+        <button
+          onClick={() => setDark(d => !d)}
+          className="p-2 rounded-md bg-gray-200 dark:bg-gray-700 hover:opacity-90"
+          title="Alternar tema"
+        >
+          {dark ? '🌙' : '☀️'}
+        </button>
+      );
+    }
+
+    /* ---------- Dashboard (gráficos com Chart.js) ---------- */
+    function Dashboard({ transactions }) {
+      const total = useMemo(
+        () => transactions.reduce((s, t) => (t.type === 'income' ? s + t.amount : s - t.amount), 0),
+        [transactions]
+      );
+
+      // dados por categoria (apenas despesas)
+      const byCategory = useMemo(() => {
+        const map = {};
+        CATEGORIES.forEach(c => map[c.id] = 0);
+        transactions.forEach(t => {
+          if (t.type === 'expense') map[t.category] = (map[t.category] || 0) + t.amount;
+        });
+        return CATEGORIES.map(c => ({ name: c.name, value: map[c.id] || 0 }));
+      }, [transactions]);
+
+      // dados mensais simples
+      const monthly = useMemo(() => {
+        const m = {};
+        transactions.forEach(t => {
+          const month = t.date ? t.date.slice(0,7) : new Date().toISOString().slice(0,7);
+          m[month] = (m[month] || 0) + (t.type === 'income' ? t.amount : -t.amount);
+        });
+        return Object.entries(m).sort().map(([month, value]) => ({ month, value }));
+      }, [transactions]);
+
+      return (
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-gray-500 dark:text-gray-300">Saldo</div>
+              <div className={`text-2xl font-bold ${total >= 0 ? 'text-green-600' : 'text-red-500'}`}>R$ {total.toFixed(2)}</div>
+            </div>
+            <div className="text-sm text-gray-500">{transactions.length} transações</div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-2">
+              <SmallPieChart data={byCategory} />
+            </div>
+            <div className="p-2">
+              <SmallBarChart data={monthly} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- SmallPieChart usando Chart.js ---------- */
+    function SmallPieChart({ data }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        const labels = data.map(d => d.name);
+        const vals = data.map(d => d.value);
+        const colors = ['#60a5fa','#f97316','#34d399','#f87171','#a78bfa','#eab308'];
+
+        if (chartRef.current) chartRef.current.destroy();
+
+        chartRef.current = new Chart(canvasRef.current, {
+          type: 'pie',
+          data: {
+            labels,
+            datasets: [{ data: vals, backgroundColor: colors }]
+          },
+          options: { plugins: { legend: { position: 'bottom' } } }
+        });
+
+        return () => chartRef.current && chartRef.current.destroy();
+      }, [data]);
+
+      return <canvas ref={canvasRef} className="w-full h-48" />;
+    }
+
+    /* ---------- SmallBarChart usando Chart.js ---------- */
+    function SmallBarChart({ data }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        const labels = data.map(d => d.month);
+        const vals = data.map(d => d.value);
+        if (chartRef.current) chartRef.current.destroy();
+
+        chartRef.current = new Chart(canvasRef.current, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{ label: 'Saldo mensal', data: vals }]
+          },
+          options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+
+        return () => chartRef.current && chartRef.current.destroy();
+      }, [data]);
+
+      return <canvas ref={canvasRef} className="w-full h-48" />;
+    }
+
+    /* ---------- TransactionForm ---------- */
+    function TransactionForm({ onAdd, editing, onUpdate, onCancelEdit }) {
+      const [form, setForm] = useState({
+        type: 'expense',
+        category: 'alimentacao',
+        amount: '',
+        date: '',
+        description: ''
+      });
+
+      useEffect(() => {
+        if (editing) setForm(editing);
+        else setForm({ type: 'expense', category: 'alimentacao', amount: '', date: '', description: '' });
+      }, [editing]);
+
+      function handleChange(e) {
+        const { name, value } = e.target;
+        setForm(prev => ({ ...prev, [name]: value }));
+      }
+
+      function submit(e) {
+        e.preventDefault();
+        if (!form.amount || Number.isNaN(Number(form.amount))) {
+          alert('Digite um valor válido.');
+          return;
+        }
+        const payload = {
+          ...form,
+          id: form.id || genId(),
+          amount: Number(form.amount),
+          date: form.date || new Date().toISOString().slice(0,10)
+        };
+        if (editing) onUpdate(payload);
+        else onAdd(payload);
+        setForm({ type: 'expense', category: 'alimentacao', amount: '', date: '', description: '' });
+      }
+
+      return (
+        <form onSubmit={submit} className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow">
+          <h3 className="font-semibold mb-2">{editing ? 'Editar transação' : 'Nova transação'}</h3>
+
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <select name="type" value={form.type} onChange={handleChange} className="p-2 rounded bg-gray-100 dark:bg-gray-700">
+              <option value="expense">Despesa</option>
+              <option value="income">Renda</option>
+            </select>
+
+            <select name="category" value={form.category} onChange={handleChange} className="p-2 rounded bg-gray-100 dark:bg-gray-700">
+              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <input name="amount" value={form.amount} onChange={handleChange} placeholder="Valor (ex: 45.50)" className="w-full p-2 rounded mb-2 bg-gray-100 dark:bg-gray-700" />
+          <input name="date" type="date" value={form.date} onChange={handleChange} className="w-full p-2 rounded mb-2 bg-gray-100 dark:bg-gray-700" />
+          <input name="description" value={form.description} onChange={handleChange} placeholder="Descrição (opcional)" className="w-full p-2 rounded mb-3 bg-gray-100 dark:bg-gray-700" />
+
+          <div className="flex gap-2">
+            <button type="submit" className="flex-1 py-2 rounded bg-sky-500 text-white">{editing ? 'Atualizar' : 'Adicionar'}</button>
+            {editing && <button type="button" onClick={onCancelEdit} className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700">Cancelar</button>}
+          </div>
+        </form>
+      );
+    }
+
+    /* ---------- TransactionList ---------- */
+    function TransactionList({ transactions, onEdit, onDelete }) {
+      function catName(id) {
+        return CATEGORIES.find(c => c.id === id)?.name || id;
+      }
+
+      return (
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow mt-4">
+          <h3 className="font-semibold mb-3">Histórico</h3>
+          <div className="space-y-2 max-h-64 overflow-auto">
+            {transactions.length === 0 && <div className="text-sm text-gray-500">Nenhuma transação ainda.</div>}
+            {transactions.map(t => (
+              <div key={t.id} className="flex items-center justify-between p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+                <div>
+                  <div className="text-sm font-medium">{t.description || catName(t.category)}</div>
+                  <div className="text-xs text-gray-500">{catName(t.category)} • {t.date}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className={`${t.type === 'income' ? 'text-green-600' : 'text-red-500'} font-semibold`}>R$ {Number(t.amount).toFixed(2)}</div>
+                  <button onClick={() => onEdit(t)} className="text-sm text-blue-500">Editar</button>
+                  <button onClick={() => { if (confirm('Excluir essa transação?')) onDelete(t.id); }} className="text-sm text-red-500">Excluir</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- App ---------- */
+    function App() {
+      const [transactions, setTransactions] = useState([]);
+      const [editing, setEditing] = useState(null);
+
+      useEffect(() => {
+        setTransactions(loadTransactions());
+      }, []);
+
+      useEffect(() => {
+        saveTransactions(transactions);
+      }, [transactions]);
+
+      function addTransaction(tx) {
+        setTransactions(prev => [tx, ...prev]);
+      }
+      function updateTransaction(updated) {
+        setTransactions(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+        setEditing(null);
+      }
+      function deleteTransaction(id) {
+        setTransactions(prev => prev.filter(t => t.id !== id));
+      }
+      function importJSON(str) {
+        try {
+          const parsed = JSON.parse(str);
+          if (!Array.isArray(parsed)) throw new Error('Formato inválido');
+          setTransactions(parsed);
+          alert('Importado com sucesso.');
+        } catch (e) { alert('Erro ao importar: ' + e.message); }
+      }
+      function exportJSON() {
+        const blob = new Blob([JSON.stringify(transactions, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'meus_gastos_backup.json'; a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      return (
+        <div className="min-h-screen p-6">
+          <div className="max-w-4xl mx-auto">
+            <header className="flex items-center justify-between mb-4">
+              <div>
+                <h1 className="text-2xl font-bold">💰 Meu Controle de Gastos</h1>
+                <p className="text-sm text-gray-500">Versão pessoal — salvo localmente no seu navegador</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={exportJSON} className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700">Exportar JSON</button>
+                <ImportButton onImport={importJSON} />
+                <ThemeToggle />
+              </div>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-1">
+                <TransactionForm
+                  onAdd={addTransaction}
+                  editing={editing}
+                  onUpdate={updateTransaction}
+                  onCancelEdit={() => setEditing(null)}
+                />
+                <div className="mt-4">
+                  <button onClick={() => { if (confirm('Limpar todas as transações?')) { setTransactions([]); }} } className="w-full py-2 rounded bg-red-500 text-white">Limpar tudo</button>
+                </div>
+              </div>
+
+              <div className="lg:col-span-2">
+                <Dashboard transactions={transactions} />
+                <TransactionList transactions={transactions} onEdit={t => setEditing(t)} onDelete={deleteTransaction} />
+              </div>
+            </div>
+
+            <footer className="mt-6 text-center text-sm text-gray-500">Feito por você — exporte/importe backups quando quiser</footer>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- Import button (arquivo) ---------- */
+    function ImportButton({ onImport }) {
+      const fileRef = React.useRef(null);
+
+      function handleFile(e) {
+        const f = e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => onImport(reader.result);
+        reader.readAsText(f);
+        e.target.value = '';
+      }
+
+      return (
+        <>
+          <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={handleFile} />
+          <button onClick={() => fileRef.current.click()} className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700">Importar JSON</button>
+        </>
+      );
+    }
+
+    /* ---------- Render ---------- */
+    const rootEl = document.getElementById('root');
+    ReactDOM.createRoot(rootEl).render(<App />);
+  </script>
+</body>
+</html>
