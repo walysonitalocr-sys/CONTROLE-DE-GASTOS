@@ -1,0 +1,494 @@
+# Meus Gastos — Projeto React (Vite)
+
+This textdoc contains **all files** for the "Meus Gastos" app ready to run and push to GitHub.
+
+**How to use:** copy each file into corresponding path in a new repo, run `npm install` and `npm run dev`.
+
+---
+
+// package.json
+{
+  "name": "meus-gastos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "framer-motion": "^10.16.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
+  }
+}
+
+---
+
+// vite.config.js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+
+---
+
+// tailwind.config.cjs
+module.exports = {
+  content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: '#f0fdfa',
+          100: '#ccfbf1',
+          200: '#99f6e4',
+          300: '#5eead4',
+          400: '#2dd4bf',
+          500: '#14b8a6',
+          600: '#0d9488',
+          700: '#0f766e',
+          800: '#115e59',
+          900: '#134e4a'
+        },
+        bluebrand: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a'
+        }
+      }
+    }
+  },
+  plugins: [],
+}
+
+---
+
+// postcss.config.cjs
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+---
+
+// index.html
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meus Gastos</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+---
+
+// src/main.jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+import './styles/index.css'
+
+createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
+
+---
+
+// src/styles/index.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gradient-start: rgba(20,184,166,1); /* green-teal */
+  --gradient-end: rgba(59,130,246,1);   /* blue */
+}
+
+body {
+  @apply bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+.header-gradient {
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+}
+
+.card {
+  @apply bg-white dark:bg-gray-800 rounded-2xl shadow p-4;
+}
+
+.button-primary {
+  @apply bg-gradient-to-r from-brand-500 to-bluebrand-500 text-white py-2 px-4 rounded-lg shadow;
+}
+
+---
+
+// src/App.jsx
+import React, { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import Dashboard from './components/Dashboard'
+import TransactionForm from './components/TransactionForm'
+import TransactionList from './components/TransactionList'
+import ThemeToggle from './components/ThemeToggle'
+import { loadTransactions, saveTransactions, loadProfile, saveProfile } from './utils/storage'
+
+export default function App() {
+  const [transactions, setTransactions] = useState([])
+  const [editing, setEditing] = useState(null)
+  const [profile, setProfile] = useState(null)
+
+  useEffect(() => {
+    setTransactions(loadTransactions())
+    setProfile(loadProfile())
+  }, [])
+
+  useEffect(() => saveTransactions(transactions), [transactions])
+  useEffect(() => saveProfile(profile), [profile])
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md p-6 rounded-2xl header-gradient text-white shadow-lg">
+          <h1 className="text-2xl font-bold mb-2">Meus Gastos</h1>
+          <p className="mb-4 opacity-90">Crie seu perfil rápido</p>
+          <ProfileForm onSave={setProfile} />
+        </motion.div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="max-w-6xl mx-auto">
+        <header className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">Meus Gastos</h1>
+            <div className="text-sm text-gray-500">Olá, {profile.name} 👋</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+          </div>
+        </header>
+
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <aside className="lg:col-span-1">
+            <TransactionForm onAdd={(t) => setTransactions(prev => [t, ...prev])} editing={editing} onUpdate={(u) => { setTransactions(prev => prev.map(p => p.id === u.id ? u : p)); setEditing(null) }} onCancel={() => setEditing(null)} />
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => { if (confirm('Limpar todas as transações?')) setTransactions([]) }} className="w-full py-2 rounded bg-red-500 text-white">Limpar tudo</button>
+              <button onClick={() => { setTransactions(loadTransactions()); alert('Exemplo restaurado') }} className="w-full py-2 rounded bg-gray-200 dark:bg-gray-700">Restaurar</button>
+            </div>
+          </aside>
+
+          <section className="lg:col-span-2 space-y-4">
+            <Dashboard transactions={transactions} onEdit={(t) => setEditing(t)} />
+            <TransactionList transactions={transactions} onEdit={(t) => setEditing(t)} onDelete={(id) => setTransactions(prev => prev.filter(p => p.id !== id))} onToggleFixed={(id) => setTransactions(prev => prev.map(p => p.id === id ? { ...p, fixed: !p.fixed } : p))} />
+          </section>
+        </main>
+
+        <footer className="mt-6 text-center text-sm text-gray-500">© 2025 Italo Rocha</footer>
+      </div>
+    </div>
+  )
+}
+
+function ProfileForm({ onSave }) {
+  const [name, setName] = useState('')
+  const [dob, setDob] = useState('')
+
+  function submit(e) {
+    e.preventDefault()
+    if (!name) return alert('Digite seu nome')
+    onSave({ name, dob })
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome" className="w-full p-2 rounded" />
+      <input value={dob} onChange={e => setDob(e.target.value)} type="date" className="w-full p-2 rounded" />
+      <button className="w-full button-primary">Começar</button>
+    </form>
+  )
+}
+
+---
+
+// src/components/Dashboard.jsx
+import React, { useMemo, useState } from 'react'
+import PieCard from './charts/PieCard'
+import BarCard from './charts/BarCard'
+
+export default function Dashboard({ transactions, onEdit }) {
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0,7))
+
+  const months = useMemo(() => {
+    const set = new Set(transactions.map(t => t.date?.slice(0,7)))
+    set.add(new Date().toISOString().slice(0,7))
+    return Array.from(set).filter(Boolean).sort().reverse()
+  }, [transactions])
+
+  const txForMonth = useMemo(() => transactions.filter(t => t.date?.slice(0,7) === selectedMonth), [transactions, selectedMonth])
+
+  const total = useMemo(() => txForMonth.reduce((s,t) => t.type === 'income' ? s + t.amount : s - t.amount, 0), [txForMonth])
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm text-gray-500">Saldo (mês)</div>
+          <div className={`text-2xl font-bold ${total >= 0 ? 'text-green-600' : 'text-red-500'}`}>R$ {total.toFixed(2)}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="p-2 rounded bg-gray-100 dark:bg-gray-700">
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <PieCard transactions={txForMonth} onEdit={onEdit} />
+        <BarCard transactions={txForMonth} />
+      </div>
+    </div>
+  )
+}
+
+---
+
+// src/components/TransactionForm.jsx
+import React, { useEffect, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
+import { CATEGORIES } from '../data/categories'
+
+export default function TransactionForm({ onAdd, editing, onUpdate, onCancel }) {
+  const [form, setForm] = useState({ type: 'expense', category: 'alimentacao', amount: '', date: '', description: '', fixed: false })
+
+  useEffect(() => { if (editing) setForm(editing); else setForm({ type: 'expense', category: 'alimentacao', amount: '', date: '', description: '', fixed: false }) }, [editing])
+
+  function handle(e) {
+    const { name, value, type, checked } = e.target
+    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    if (!form.amount || isNaN(Number(form.amount))) return alert('Valor inválido')
+    const payload = { ...form, id: form.id || uuidv4(), amount: Number(form.amount), date: form.date || new Date().toISOString().slice(0,10) }
+    editing ? onUpdate(payload) : onAdd(payload)
+    setForm({ type: 'expense', category: 'alimentacao', amount: '', date: '', description: '', fixed: false })
+  }
+
+  return (
+    <form onSubmit={submit} className="card">
+      <h3 className="font-semibold mb-2">{editing ? 'Editar' : 'Nova'} transação</h3>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <select name="type" value={form.type} onChange={handle} className="p-2 rounded bg-gray-100 dark:bg-gray-700">
+          <option value="expense">Despesa</option>
+          <option value="income">Renda</option>
+        </select>
+        <select name="category" value={form.category} onChange={handle} className="p-2 rounded bg-gray-100 dark:bg-gray-700">
+          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <input name="amount" value={form.amount} onChange={handle} placeholder="Valor" className="w-full p-2 mb-2 rounded bg-gray-100 dark:bg-gray-700" />
+      <input name="date" type="date" value={form.date} onChange={handle} className="w-full p-2 mb-2 rounded bg-gray-100 dark:bg-gray-700" />
+      <input name="description" value={form.description} onChange={handle} placeholder="Descrição (opcional)" className="w-full p-2 mb-2 rounded bg-gray-100 dark:bg-gray-700" />
+
+      <label className="flex items-center gap-2 text-sm mb-3"><input type="checkbox" name="fixed" checked={form.fixed} onChange={handle} /> Despesa fixa</label>
+
+      <div className="flex gap-2">
+        <button type="submit" className="button-primary flex-1">{editing ? 'Atualizar' : 'Adicionar'}</button>
+        {editing && <button type="button" onClick={onCancel} className="px-3 py-2 rounded bg-gray-200 dark:bg-gray-700">Cancelar</button>}
+      </div>
+    </form>
+  )
+}
+
+---
+
+// src/components/TransactionList.jsx
+import React from 'react'
+import { CATEGORIES } from '../data/categories'
+
+export default function TransactionList({ transactions, onEdit, onDelete, onToggleFixed }) {
+  function catName(id) { return CATEGORIES.find(c => c.id === id)?.name || id }
+  return (
+    <div className="card mt-4">
+      <h3 className="font-semibold mb-3">Histórico</h3>
+      <div className="space-y-2 max-h-64 overflow-auto">
+        {transactions.length === 0 && <div className="text-sm text-gray-500">Nenhuma transação.</div>}
+        {transactions.map(t => (
+          <div key={t.id} className="flex items-center justify-between p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+            <div>
+              <div className="text-sm font-medium">{t.description || catName(t.category)}</div>
+              <div className="text-xs text-gray-500">{catName(t.category)} • {t.date}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={`${t.type === 'income' ? 'text-green-600' : 'text-red-500'} font-semibold`}>R$ {t.amount.toFixed(2)}</div>
+              <input type="checkbox" checked={!!t.fixed} onChange={() => onToggleFixed(t.id)} title="Fixa" />
+              <button onClick={() => onEdit(t)} className="text-sm text-blue-500">Editar</button>
+              <button onClick={() => { if (confirm('Excluir?')) onDelete(t.id) }} className="text-sm text-red-500">Excluir</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+---
+
+// src/components/charts/PieCard.jsx
+import React, { useEffect, useRef } from 'react'
+import Chart from 'chart.js/auto'
+import { CATEGORIES } from '../../data/categories'
+
+export default function PieCard({ transactions }) {
+  const canvasRef = useRef(null)
+  const chartRef = useRef(null)
+
+  useEffect(() => {
+    const map = {}
+    CATEGORIES.forEach(c => map[c.id] = 0)
+    transactions.forEach(t => { if (t.type === 'expense') map[t.category] += t.amount })
+    const data = CATEGORIES.map(c => ({ name: c.name, value: map[c.id] })).filter(d => d.value > 0)
+
+    if (chartRef.current) chartRef.current.destroy()
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'pie',
+      data: {
+        labels: data.map(d => d.name),
+        datasets: [{ data: data.map(d => d.value), backgroundColor: ['#16a34a','#059669','#10b981','#3b82f6','#60a5fa','#0ea5a9'] }]
+      },
+      options: { plugins: { legend: { position: 'bottom' } } }
+    })
+
+    return () => chartRef.current && chartRef.current.destroy()
+  }, [transactions])
+
+  return (
+    <div>
+      <h4 className="text-sm font-medium mb-2">Despesas por categoria</h4>
+      <canvas ref={canvasRef}></canvas>
+    </div>
+  )
+}
+
+---
+
+// src/components/charts/BarCard.jsx
+import React, { useEffect, useRef } from 'react'
+import Chart from 'chart.js/auto'
+
+export default function BarCard({ transactions }) {
+  const canvasRef = useRef(null)
+  const chartRef = useRef(null)
+
+  useEffect(() => {
+    const map = {}
+    transactions.forEach(t => { const day = t.date.slice(8,10); map[day] = (map[day] || 0) + (t.type === 'expense' ? t.amount : -t.amount) })
+    const labels = Object.keys(map).sort()
+    const data = labels.map(l => map[l])
+
+    if (chartRef.current) chartRef.current.destroy()
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Fluxo (R$)', data, backgroundColor: '#3b82f6' }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    })
+
+    return () => chartRef.current && chartRef.current.destroy()
+  }, [transactions])
+
+  return (
+    <div>
+      <h4 className="text-sm font-medium mb-2">Fluxo por dia</h4>
+      <canvas ref={canvasRef}></canvas>
+    </div>
+  )
+}
+
+---
+
+// src/data/categories.js
+export const CATEGORIES = [
+  { id: 'alimentacao', name: 'Alimentação' },
+  { id: 'transporte', name: 'Transporte' },
+  { id: 'lazer', name: 'Lazer' },
+  { id: 'moradia', name: 'Moradia' },
+  { id: 'cartoes', name: 'Cartões' },
+  { id: 'faculdade', name: 'Faculdade' },
+  { id: 'internet', name: 'Internet' },
+  { id: 'luz', name: 'Luz' },
+  { id: 'agua', name: 'Água' },
+  { id: 'saude', name: 'Saúde' },
+  { id: 'outros', name: 'Outros' }
+]
+
+---
+
+// src/utils/storage.js
+const KEY = 'meus_gastos_v2_transactions'
+const PROFILE_KEY = 'meus_gastos_v2_profile'
+
+export function loadTransactions() {
+  try {
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return []
+    return JSON.parse(raw)
+  } catch { return [] }
+}
+export function saveTransactions(data) {
+  try { localStorage.setItem(KEY, JSON.stringify(data)) } catch {}
+}
+export function loadProfile() {
+  try { const raw = localStorage.getItem(PROFILE_KEY); return raw ? JSON.parse(raw) : null } catch { return null }
+}
+export function saveProfile(p) { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)) } catch {} }
+
+---
+
+// README.md
+# Meus Gastos
+
+Projeto React + Vite — app de controle financeiro pessoal (versão inicial)
+
+## Como rodar
+1. `npm install`
+2. `npm run dev`
+
+## Deploy no GitHub Pages
+- Crie repo no GitHub e suba o código. Em *Settings → Pages* selecione branch `gh-pages` ou `main`/`/` conforme sua preferência. Use uma Action para build e deploy automaticamente.
+
+---
+
+End of project files.
